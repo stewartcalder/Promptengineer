@@ -1,75 +1,68 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, jsonb, timestamp, integer, real } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, jsonb, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const promptTemplates = pgTable("prompt_templates", {
+export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(),
-  description: text("description"),
-  systemPrompt: text("system_prompt"),
-  messages: jsonb("messages").notNull(),
-  parameters: jsonb("parameters").notNull(),
+  username: text("username").notNull().unique(),
+  password: text("password").notNull(),
+});
+
+export const uploadedFiles = pgTable("uploaded_files", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: text("session_id").notNull(),
+  filename: text("filename").notNull(),
+  originalName: text("original_name").notNull(),
+  fileType: text("file_type").notNull(),
+  fileSize: integer("file_size").notNull(),
+  status: text("status").notNull().default("pending"), // pending, processing, completed, error
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+});
+
+export const fileConversions = pgTable("file_conversions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  fileId: varchar("file_id").notNull().references(() => uploadedFiles.id, { onDelete: "cascade" }),
+  conversionType: text("conversion_type").notNull(), // summary, full_content, metadata_only
+  options: jsonb("options").notNull(), // { includeTables: boolean, includeImages: boolean, preserveFormatting: boolean }
+  jsonOutput: jsonb("json_output"),
+  tokenCount: integer("token_count"),
+  status: text("status").notNull().default("pending"), // pending, processing, completed, error
+  error: text("error"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const promptExecutions = pgTable("prompt_executions", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  templateId: varchar("template_id"),
-  systemPrompt: text("system_prompt"),
-  messages: jsonb("messages").notNull(),
-  parameters: jsonb("parameters").notNull(),
-  response: jsonb("response"),
-  status: text("status").notNull(), // 'pending', 'success', 'error', 'rate_limited'
-  inputTokens: integer("input_tokens"),
-  outputTokens: integer("output_tokens"),
-  cost: real("cost"),
-  executedAt: timestamp("executed_at").defaultNow().notNull(),
+export const insertUserSchema = createInsertSchema(users).pick({
+  username: true,
+  password: true,
 });
 
-// Zod schemas for validation
-export const messageSchema = z.object({
-  role: z.enum(["user", "assistant"]),
-  content: z.union([
-    z.string(),
-    z.array(z.object({
-      type: z.enum(["text", "image"]),
-      text: z.string().optional(),
-      source: z.object({
-        type: z.string(),
-        media_type: z.string(),
-        data: z.string(),
-      }).optional(),
-    }))
-  ]),
+export const insertFileSchema = createInsertSchema(uploadedFiles).omit({
+  id: true,
+  uploadedAt: true,
 });
 
-export const parametersSchema = z.object({
-  model: z.string().default("claude-sonnet-4-20250514"),
-  max_tokens: z.number().min(1).max(8192).default(1024),
-  temperature: z.number().min(0).max(1).default(0.7),
-  top_k: z.number().min(1).max(100).optional(),
-  stop_sequences: z.array(z.string()).optional(),
-  tool_choice: z.enum(["auto", "any", "none"]).optional(),
-  thinking: z.object({
-    type: z.literal("enabled"),
-    budget_tokens: z.number().min(1024),
-  }).optional(),
-});
-
-export const insertPromptTemplateSchema = createInsertSchema(promptTemplates).omit({
+export const insertConversionSchema = createInsertSchema(fileConversions).omit({
   id: true,
   createdAt: true,
 });
 
-export const insertPromptExecutionSchema = createInsertSchema(promptExecutions).omit({
-  id: true,
-  executedAt: true,
-});
+export type InsertUser = z.infer<typeof insertUserSchema>;
+export type User = typeof users.$inferSelect;
+export type UploadedFile = typeof uploadedFiles.$inferSelect;
+export type FileConversion = typeof fileConversions.$inferSelect;
+export type InsertFile = z.infer<typeof insertFileSchema>;
+export type InsertConversion = z.infer<typeof insertConversionSchema>;
 
-export type PromptTemplate = typeof promptTemplates.$inferSelect;
-export type InsertPromptTemplate = z.infer<typeof insertPromptTemplateSchema>;
-export type PromptExecution = typeof promptExecutions.$inferSelect;
-export type InsertPromptExecution = z.infer<typeof insertPromptExecutionSchema>;
-export type Message = z.infer<typeof messageSchema>;
-export type Parameters = z.infer<typeof parametersSchema>;
+// Frontend types for file processing
+export interface ConversionOptions {
+  conversionType: 'summary' | 'full_content' | 'metadata_only';
+  includeTables: boolean;
+  includeImages: boolean;
+  preserveFormatting: boolean;
+}
+
+export interface ProcessedFile extends UploadedFile {
+  conversions: FileConversion[];
+  latestConversion?: FileConversion;
+}

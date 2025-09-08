@@ -1,99 +1,123 @@
-import { type PromptTemplate, type InsertPromptTemplate, type PromptExecution, type InsertPromptExecution } from "@shared/schema";
+import { type User, type InsertUser, type UploadedFile, type FileConversion, type InsertFile, type InsertConversion } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
-  // Template management
-  getTemplate(id: string): Promise<PromptTemplate | undefined>;
-  getAllTemplates(): Promise<PromptTemplate[]>;
-  createTemplate(template: InsertPromptTemplate): Promise<PromptTemplate>;
-  updateTemplate(id: string, template: Partial<InsertPromptTemplate>): Promise<PromptTemplate | undefined>;
-  deleteTemplate(id: string): Promise<boolean>;
-
-  // Execution management
-  getExecution(id: string): Promise<PromptExecution | undefined>;
-  getAllExecutions(): Promise<PromptExecution[]>;
-  createExecution(execution: InsertPromptExecution): Promise<PromptExecution>;
-  updateExecution(id: string, execution: Partial<InsertPromptExecution>): Promise<PromptExecution | undefined>;
-  deleteExecution(id: string): Promise<boolean>;
+  getUser(id: string): Promise<User | undefined>;
+  getUserByUsername(username: string): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>;
+  
+  // File management
+  createFile(file: InsertFile): Promise<UploadedFile>;
+  getFile(id: string): Promise<UploadedFile | undefined>;
+  getFilesBySession(sessionId: string): Promise<UploadedFile[]>;
+  updateFileStatus(id: string, status: string): Promise<void>;
+  deleteFile(id: string): Promise<void>;
+  
+  // Conversion management
+  createConversion(conversion: InsertConversion): Promise<FileConversion>;
+  getConversion(id: string): Promise<FileConversion | undefined>;
+  getConversionsByFile(fileId: string): Promise<FileConversion[]>;
+  updateConversion(id: string, updates: Partial<FileConversion>): Promise<void>;
+  deleteConversion(id: string): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
-  private templates: Map<string, PromptTemplate>;
-  private executions: Map<string, PromptExecution>;
+  private users: Map<string, User>;
+  private files: Map<string, UploadedFile>;
+  private conversions: Map<string, FileConversion>;
 
   constructor() {
-    this.templates = new Map();
-    this.executions = new Map();
+    this.users = new Map();
+    this.files = new Map();
+    this.conversions = new Map();
   }
 
-  // Template management
-  async getTemplate(id: string): Promise<PromptTemplate | undefined> {
-    return this.templates.get(id);
+  async getUser(id: string): Promise<User | undefined> {
+    return this.users.get(id);
   }
 
-  async getAllTemplates(): Promise<PromptTemplate[]> {
-    return Array.from(this.templates.values()).sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find(
+      (user) => user.username === username,
     );
   }
 
-  async createTemplate(insertTemplate: InsertPromptTemplate): Promise<PromptTemplate> {
+  async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
-    const template: PromptTemplate = {
-      ...insertTemplate,
+    const user: User = { ...insertUser, id };
+    this.users.set(id, user);
+    return user;
+  }
+
+  async createFile(insertFile: InsertFile): Promise<UploadedFile> {
+    const id = randomUUID();
+    const file: UploadedFile = { 
+      ...insertFile, 
       id,
-      createdAt: new Date(),
+      uploadedAt: new Date()
     };
-    this.templates.set(id, template);
-    return template;
+    this.files.set(id, file);
+    return file;
   }
 
-  async updateTemplate(id: string, updateData: Partial<InsertPromptTemplate>): Promise<PromptTemplate | undefined> {
-    const existing = this.templates.get(id);
-    if (!existing) return undefined;
-    
-    const updated: PromptTemplate = { ...existing, ...updateData };
-    this.templates.set(id, updated);
-    return updated;
+  async getFile(id: string): Promise<UploadedFile | undefined> {
+    return this.files.get(id);
   }
 
-  async deleteTemplate(id: string): Promise<boolean> {
-    return this.templates.delete(id);
-  }
-
-  // Execution management
-  async getExecution(id: string): Promise<PromptExecution | undefined> {
-    return this.executions.get(id);
-  }
-
-  async getAllExecutions(): Promise<PromptExecution[]> {
-    return Array.from(this.executions.values()).sort(
-      (a, b) => new Date(b.executedAt).getTime() - new Date(a.executedAt).getTime()
+  async getFilesBySession(sessionId: string): Promise<UploadedFile[]> {
+    return Array.from(this.files.values()).filter(
+      (file) => file.sessionId === sessionId
     );
   }
 
-  async createExecution(insertExecution: InsertPromptExecution): Promise<PromptExecution> {
+  async updateFileStatus(id: string, status: string): Promise<void> {
+    const file = this.files.get(id);
+    if (file) {
+      this.files.set(id, { ...file, status });
+    }
+  }
+
+  async deleteFile(id: string): Promise<void> {
+    this.files.delete(id);
+    // Also delete associated conversions
+    const conversions = Array.from(this.conversions.entries()).filter(
+      ([_, conversion]) => conversion.fileId === id
+    );
+    conversions.forEach(([conversionId]) => {
+      this.conversions.delete(conversionId);
+    });
+  }
+
+  async createConversion(insertConversion: InsertConversion): Promise<FileConversion> {
     const id = randomUUID();
-    const execution: PromptExecution = {
-      ...insertExecution,
+    const conversion: FileConversion = {
+      ...insertConversion,
       id,
-      executedAt: new Date(),
+      createdAt: new Date()
     };
-    this.executions.set(id, execution);
-    return execution;
+    this.conversions.set(id, conversion);
+    return conversion;
   }
 
-  async updateExecution(id: string, updateData: Partial<InsertPromptExecution>): Promise<PromptExecution | undefined> {
-    const existing = this.executions.get(id);
-    if (!existing) return undefined;
-    
-    const updated: PromptExecution = { ...existing, ...updateData };
-    this.executions.set(id, updated);
-    return updated;
+  async getConversion(id: string): Promise<FileConversion | undefined> {
+    return this.conversions.get(id);
   }
 
-  async deleteExecution(id: string): Promise<boolean> {
-    return this.executions.delete(id);
+  async getConversionsByFile(fileId: string): Promise<FileConversion[]> {
+    return Array.from(this.conversions.values()).filter(
+      (conversion) => conversion.fileId === fileId
+    );
+  }
+
+  async updateConversion(id: string, updates: Partial<FileConversion>): Promise<void> {
+    const conversion = this.conversions.get(id);
+    if (conversion) {
+      this.conversions.set(id, { ...conversion, ...updates });
+    }
+  }
+
+  async deleteConversion(id: string): Promise<void> {
+    this.conversions.delete(id);
   }
 }
 

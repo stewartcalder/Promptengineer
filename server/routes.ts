@@ -1,195 +1,255 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import multer from "multer";
+import { randomUUID } from "crypto";
+import * as path from "path";
+import * as fs from "fs/promises";
 import { storage } from "./storage";
-import { insertPromptTemplateSchema, insertPromptExecutionSchema, parametersSchema, messageSchema } from "@shared/schema";
-import { executeAnthropicPrompt } from "./services/anthropic";
-import { z } from "zod";
+import { FileProcessor } from "./services/fileProcessor";
+import { TokenCounter } from "./services/tokenCounter";
+import { insertFileSchema, insertConversionSchema } from "@shared/schema";
+
+// Configure multer for file uploads
+const upload = multer({
+  dest: 'uploads/',
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['.pdf', '.docx', '.txt', '.md', '.csv', '.json', '.xml'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    
+    if (allowedTypes.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`File type ${ext} not supported`));
+    }
+  }
+});
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Template routes
-  app.get("/api/templates", async (req, res) => {
+  const fileProcessor = new FileProcessor();
+
+  // Get all files for current session
+  app.get("/api/files", async (req, res) => {
     try {
-      const templates = await storage.getAllTemplates();
-      res.json(templates);
+      const sessionId = req.sessionID;
+      const files = await storage.getFilesBySession(sessionId);
+      
+      // Get conversions for each file
+      const filesWithConversions = await Promise.all(
+        files.map(async (file) => {
+          const conversions = await storage.getConversionsByFile(file.id);
+          const latestConversion = conversions.length > 0 
+            ? conversions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+            : undefined;
+          
+          return {
+            ...file,
+            conversions,
+            latestConversion
+          };
+        })
+      );
+      
+      res.json(filesWithConversions);
     } catch (error) {
-      res.status(500).json({ message: "Failed to fetch templates" });
+      console.error("Error fetching files:", error);
+      res.status(500).json({ error: "Failed to fetch files" });
     }
   });
 
-  app.get("/api/templates/:id", async (req, res) => {
+  // Upload files
+  app.post("/api/files/upload", upload.array('files', 10), async (req, res) => {
     try {
-      const template = await storage.getTemplate(req.params.id);
-      if (!template) {
-        return res.status(404).json({ message: "Template not found" });
+      if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
+        return res.status(400).json({ error: "No files uploaded" });
       }
-      res.json(template);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch template" });
-    }
-  });
 
-  app.post("/api/templates", async (req, res) => {
-    try {
-      const templateData = insertPromptTemplateSchema.parse(req.body);
-      const template = await storage.createTemplate(templateData);
-      res.json(template);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid template data", errors: error.errors });
+      const sessionId = req.sessionID;
+      const uploadedFiles = [];
+
+      for (const file of req.files) {
+        const fileExtension = path.extname(file.originalname).toLowerCase().substring(1);
+        
+        const fileData = insertFileSchema.parse({
+          sessionId,
+          filename: file.filename,
+          originalName: file.originalname,
+          fileType: fileExtension,
+          fileSize: file.size,
+          status: "uploaded"
+        });
+
+        const savedFile = await storage.createFile(fileData);
+        uploadedFiles.push(savedFile);
       }
-      res.status(500).json({ message: "Failed to create template" });
-    }
-  });
 
-  app.put("/api/templates/:id", async (req, res) => {
-    try {
-      const templateData = insertPromptTemplateSchema.partial().parse(req.body);
-      const template = await storage.updateTemplate(req.params.id, templateData);
-      if (!template) {
-        return res.status(404).json({ message: "Template not found" });
-      }
-      res.json(template);
+      res.json({ 
+        message: "Files uploaded successfully", 
+        files: uploadedFiles 
+      });
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid template data", errors: error.errors });
+      console.error("Error uploading files:", error);
+      res.status(500).json({ error: "Failed to upload files" });
+    }
+  });
+
+  // Delete file
+  app.delete("/api/files/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const file = await storage.getFile(id);
+      
+      if (!file) {
+        return res.status(404).json({ error: "File not found" });
       }
-      res.status(500).json({ message: "Failed to update template" });
-    }
-  });
 
-  app.delete("/api/templates/:id", async (req, res) => {
-    try {
-      const deleted = await storage.deleteTemplate(req.params.id);
-      if (!deleted) {
-        return res.status(404).json({ message: "Template not found" });
+      // Delete physical file
+      try {
+        await fs.unlink(path.join('uploads', file.filename));
+      } catch (unlinkError) {
+        console.warn("Could not delete physical file:", unlinkError);
       }
-      res.json({ message: "Template deleted" });
+
+      // Delete from storage (this also deletes associated conversions)
+      await storage.deleteFile(id);
+      
+      res.json({ message: "File deleted successfully" });
     } catch (error) {
-      res.status(500).json({ message: "Failed to delete template" });
+      console.error("Error deleting file:", error);
+      res.status(500).json({ error: "Failed to delete file" });
     }
   });
 
-  // Execution routes
-  app.get("/api/executions", async (req, res) => {
+  // Process file conversion
+  app.post("/api/files/:id/convert", async (req, res) => {
     try {
-      const executions = await storage.getAllExecutions();
-      res.json(executions);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch executions" });
-    }
-  });
-
-  app.get("/api/executions/:id", async (req, res) => {
-    try {
-      const execution = await storage.getExecution(req.params.id);
-      if (!execution) {
-        return res.status(404).json({ message: "Execution not found" });
+      const { id } = req.params;
+      const { conversionType, includeTables, includeImages, preserveFormatting } = req.body;
+      
+      const file = await storage.getFile(id);
+      if (!file) {
+        return res.status(404).json({ error: "File not found" });
       }
-      res.json(execution);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch execution" });
-    }
-  });
 
-  app.delete("/api/executions/:id", async (req, res) => {
-    try {
-      const deleted = await storage.deleteExecution(req.params.id);
-      if (!deleted) {
-        return res.status(404).json({ message: "Execution not found" });
-      }
-      res.json({ message: "Execution deleted" });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to delete execution" });
-    }
-  });
-
-  // Execute prompt
-  app.post("/api/execute", async (req, res) => {
-    try {
-      const executeSchema = z.object({
-        systemPrompt: z.string().optional(),
-        messages: z.array(messageSchema).min(1),
-        parameters: parametersSchema,
-        templateId: z.string().optional(),
+      // Create conversion record
+      const conversionData = insertConversionSchema.parse({
+        fileId: id,
+        conversionType,
+        options: {
+          includeTables: Boolean(includeTables),
+          includeImages: Boolean(includeImages),
+          preserveFormatting: Boolean(preserveFormatting)
+        },
+        status: "processing"
       });
 
-      const { systemPrompt, messages, parameters, templateId } = executeSchema.parse(req.body);
+      const conversion = await storage.createConversion(conversionData);
 
-      // Create execution record
-      const executionData = {
-        templateId,
-        systemPrompt,
-        messages,
-        parameters,
-        response: null,
-        status: "pending" as const,
-        inputTokens: null,
-        outputTokens: null,
-        cost: null,
-      };
+      // Process file in background (in production, you'd use a job queue)
+      setImmediate(async () => {
+        try {
+          await storage.updateFileStatus(id, "processing");
+          
+          const filePath = path.join('uploads', file.filename);
+          const processedContent = await fileProcessor.processFile(
+            filePath,
+            file.originalName,
+            file.fileType,
+            {
+              conversionType: conversionType as any,
+              includeTables: Boolean(includeTables),
+              includeImages: Boolean(includeImages),
+              preserveFormatting: Boolean(preserveFormatting)
+            }
+          );
 
-      const execution = await storage.createExecution(executionData);
+          const tokenCount = TokenCounter.estimateTokens(processedContent);
 
-      try {
-        // Execute the prompt
-        const response = await executeAnthropicPrompt({
-          systemPrompt,
-          messages,
-          parameters,
-        });
+          await storage.updateConversion(conversion.id, {
+            jsonOutput: processedContent,
+            tokenCount,
+            status: "completed"
+          });
 
-        // Update execution with response
-        await storage.updateExecution(execution.id, {
-          status: "success",
-          response: response,
-          inputTokens: response.usage.input_tokens,
-          outputTokens: response.usage.output_tokens,
-          cost: calculateCost(parameters.model, response.usage),
-        });
+          await storage.updateFileStatus(id, "completed");
+        } catch (error) {
+          console.error("Error processing file:", error);
+          await storage.updateConversion(conversion.id, {
+            status: "error",
+            error: error instanceof Error ? error.message : "Unknown error"
+          });
+          await storage.updateFileStatus(id, "error");
+        }
+      });
 
-        res.json({
-          executionId: execution.id,
-          response,
-          usage: response.usage,
-          cost: calculateCost(parameters.model, response.usage),
-        });
-      } catch (apiError: any) {
-        const status = apiError.status === 429 ? "rate_limited" : "error";
-        await storage.updateExecution(execution.id, {
-          status,
-          response: { error: apiError.message },
-        });
-
-        res.status(apiError.status || 500).json({
-          executionId: execution.id,
-          message: "API request failed",
-          error: apiError.message,
-        });
-      }
+      res.json({ 
+        message: "File conversion started",
+        conversion: {
+          ...conversion,
+          jsonOutput: null,
+          tokenCount: null
+        }
+      });
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid request data", errors: error.errors });
+      console.error("Error starting conversion:", error);
+      res.status(500).json({ error: "Failed to start conversion" });
+    }
+  });
+
+  // Get specific conversion
+  app.get("/api/conversions/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const conversion = await storage.getConversion(id);
+      
+      if (!conversion) {
+        return res.status(404).json({ error: "Conversion not found" });
       }
-      res.status(500).json({ message: "Failed to execute prompt" });
+
+      res.json(conversion);
+    } catch (error) {
+      console.error("Error fetching conversion:", error);
+      res.status(500).json({ error: "Failed to fetch conversion" });
+    }
+  });
+
+  // Get conversions for a file
+  app.get("/api/files/:id/conversions", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const conversions = await storage.getConversionsByFile(id);
+      res.json(conversions);
+    } catch (error) {
+      console.error("Error fetching conversions:", error);
+      res.status(500).json({ error: "Failed to fetch conversions" });
+    }
+  });
+
+  // Clear all files for session
+  app.delete("/api/files", async (req, res) => {
+    try {
+      const sessionId = req.sessionID;
+      const files = await storage.getFilesBySession(sessionId);
+      
+      // Delete physical files and database records
+      await Promise.all(files.map(async (file) => {
+        try {
+          await fs.unlink(path.join('uploads', file.filename));
+        } catch (unlinkError) {
+          console.warn("Could not delete physical file:", unlinkError);
+        }
+        await storage.deleteFile(file.id);
+      }));
+      
+      res.json({ message: "All files cleared successfully" });
+    } catch (error) {
+      console.error("Error clearing files:", error);
+      res.status(500).json({ error: "Failed to clear files" });
     }
   });
 
   const httpServer = createServer(app);
   return httpServer;
-}
-
-// Cost calculation based on Anthropic pricing (as of 2025)
-function calculateCost(model: string, usage: { input_tokens: number; output_tokens: number }): number {
-  const pricing: { [key: string]: { input: number; output: number } } = {
-    "claude-opus-4-1-20250805": { input: 15, output: 75 },
-    "claude-sonnet-4-20250514": { input: 3, output: 15 },
-    "claude-3-5-sonnet-20241022": { input: 3, output: 15 },
-    "claude-3-haiku-20240307": { input: 0.25, output: 1.25 },
-  };
-
-  const modelPricing = pricing[model] || pricing["claude-sonnet-4-20250514"];
-  const inputCost = (usage.input_tokens / 1000000) * modelPricing.input;
-  const outputCost = (usage.output_tokens / 1000000) * modelPricing.output;
-  
-  return Math.round((inputCost + outputCost) * 100000) / 100000; // Round to 5 decimal places
 }
