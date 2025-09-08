@@ -223,7 +223,7 @@ export class FileProcessor {
     
     // Basic XML parsing simulation
     const tagMatches = content.match(/<[^/>][^>]*>/g) || [];
-    const uniqueTags = [...new Set(tagMatches.map(tag => tag.replace(/<\/?([^>\s]+).*?>/g, '$1')))];
+    const uniqueTags = Array.from(new Set(tagMatches.map(tag => tag.replace(/<\/?([^>\s]+).*?>/g, '$1'))));
     
     baseResult.metadata = {
       file_size: stats.size,

@@ -54,6 +54,7 @@ export class MemStorage implements IStorage {
     const file: UploadedFile = { 
       ...insertFile, 
       id,
+      status: insertFile.status || "pending",
       uploadedAt: new Date()
     };
     this.files.set(id, file);
@@ -93,6 +94,10 @@ export class MemStorage implements IStorage {
     const conversion: FileConversion = {
       ...insertConversion,
       id,
+      status: insertConversion.status || "pending",
+      jsonOutput: insertConversion.jsonOutput || null,
+      tokenCount: insertConversion.tokenCount || null,
+      error: insertConversion.error || null,
       createdAt: new Date()
     };
     this.conversions.set(id, conversion);
