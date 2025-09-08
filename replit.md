@@ -1,8 +1,12 @@
 # Overview
 
-This is a full-stack prompt engineering application that allows users to build, test, and manage AI prompts with the Anthropic Claude API. The application provides a visual interface for constructing prompts, configuring API parameters, executing prompts, and viewing results with cost tracking and token usage metrics.
+This is a full-stack prompt engineering application suite with two main components:
 
-The system is designed as a prompt playground and management tool, enabling users to experiment with different prompt configurations, save templates for reuse, and maintain a history of executions with detailed analytics.
+1. **Prompt Builder**: Allows users to build, test, and manage AI prompts with the Anthropic Claude API. Provides a visual interface for constructing prompts, configuring API parameters, executing prompts, and viewing results with cost tracking and token usage metrics.
+
+2. **File Processing Workspace**: Independent file-to-JSON conversion system that enables users to upload various file types (PDF, DOCX, TXT, MD, CSV, JSON, XML), configure conversion options, and generate optimized JSON output for use in prompts. Includes token estimation and cost analysis.
+
+The system is designed as an integrated prompt engineering suite, enabling users to convert documents into AI-ready formats and seamlessly build prompts with intelligent content processing.
 
 # User Preferences
 
@@ -32,9 +36,16 @@ Preferred communication style: Simple, everyday language.
 - **Fallback Storage**: In-memory storage implementation for development/testing
 
 ## Database Schema
-The application uses two main entities:
+The application uses multiple entities:
+
+### Prompt Builder
 - **Prompt Templates**: Stores reusable prompt configurations with system prompts, messages, and parameters
 - **Prompt Executions**: Records execution history with input/output tokens, costs, and response data
+
+### File Processing
+- **Uploaded Files**: Tracks file uploads with metadata (name, type, size, status, session)
+- **File Conversions**: Stores conversion results with JSON output, token counts, and processing options
+- **Users**: Basic user management for authentication (when needed)
 
 ## External Dependencies
 
@@ -48,6 +59,12 @@ The application uses two main entities:
 - **Drizzle ORM**: Type-safe database operations and migrations
 - **Environment Variables**: DATABASE_URL and ANTHROPIC_API_KEY configuration
 
+### File Processing & Upload
+- **Multer**: File upload middleware for handling multipart/form-data
+- **CSV Parser**: Processing CSV files for data extraction
+- **Express Session**: Session management for file tracking across requests
+- **File Processing Service**: Comprehensive file analysis and JSON conversion
+
 ### Development Tools
 - **Replit Integration**: Development environment with cartographer plugin and runtime error overlay
 - **TypeScript**: Full type safety across frontend, backend, and shared schemas
@@ -59,4 +76,14 @@ The application uses two main entities:
 - **Lucide React**: Icon library for consistent iconography
 - **Google Fonts**: Inter, JetBrains Mono, and other typography options
 
-The architecture emphasizes type safety, developer experience, and scalability with a clear separation between client and server code while sharing type definitions through a common schema layer.
+## Recent Changes
+
+### File Processing Integration (January 2025)
+- Added independent file processing workspace with separate navigation
+- Implemented file upload system supporting 7 file types (PDF, DOCX, TXT, MD, CSV, JSON, XML)
+- Built conversion engine with three modes: summary, full content, metadata only
+- Added token estimation and cost calculation for processed content
+- Created comprehensive UI for file management, conversion options, and JSON output viewing
+- Integrated session-based file tracking for multi-file workflows
+
+The architecture emphasizes type safety, developer experience, and scalability with a clear separation between client and server code while sharing type definitions through a common schema layer. The dual-workspace design allows users to seamlessly move between document processing and prompt building workflows.
