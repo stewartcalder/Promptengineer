@@ -2,6 +2,8 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { createReadStream } from 'fs';
 import csv from 'csv-parser';
+import pdfParse from 'pdf-parse';
+import mammoth from 'mammoth';
 
 // Type definitions for different file processors
 export interface ProcessingOptions {
@@ -56,67 +58,168 @@ export class FileProcessor {
   }
 
   private async processPDF(filePath: string, baseResult: ProcessedContent, options: ProcessingOptions): Promise<ProcessedContent> {
-    // For now, simulate PDF processing since pdf-parse requires additional setup
+    const buffer = await fs.readFile(filePath);
     const stats = await fs.stat(filePath);
     
-    baseResult.metadata = {
-      file_size: stats.size,
-      pages: Math.floor(Math.random() * 20) + 1, // Simulated page count
-      created_date: stats.birthtime.toISOString().split('T')[0]
-    };
+    try {
+      const data = await pdfParse(buffer);
+      
+      // Extract metadata
+      baseResult.metadata = {
+        file_size: stats.size,
+        pages: data.numpages,
+        created_date: stats.birthtime.toISOString().split('T')[0],
+        word_count: data.text.split(/\s+/).filter(word => word.length > 0).length,
+        character_count: data.text.length
+      };
 
-    // Simulate content based on conversion type
-    if (options.conversionType === 'summary') {
-      baseResult.content = {
-        summary: "This document contains important information that has been processed and summarized.",
-        key_points: [
-          "Document contains structured content",
-          "Multiple sections identified",
-          "Tables and formatting preserved based on options"
-        ]
-      };
-    } else if (options.conversionType === 'full_content') {
-      baseResult.content = {
-        full_text: "Complete extracted text content would appear here in a real implementation.",
-        sections: []
-      };
-    } else {
-      baseResult.content = {
-        structure: "Document structure information",
-        page_count: baseResult.metadata.pages
-      };
+      // Add PDF-specific metadata if available
+      if (data.info) {
+        baseResult.metadata = {
+          ...baseResult.metadata,
+          title: data.info.Title || undefined,
+          author: data.info.Author || undefined,
+          subject: data.info.Subject || undefined,
+          creator: data.info.Creator || undefined,
+          producer: data.info.Producer || undefined,
+          creation_date: data.info.CreationDate || undefined,
+          modification_date: data.info.ModDate || undefined
+        };
+      }
+
+      // Process content based on conversion type
+      if (options.conversionType === 'summary') {
+        const words = data.text.split(/\s+/).filter(word => word.length > 0);
+        const lines = data.text.split('\n').filter(line => line.trim().length > 0);
+        
+        // Extract first and last paragraphs for summary
+        const paragraphs = data.text.split(/\n\s*\n/).filter(p => p.trim().length > 0);
+        const firstParagraphs = paragraphs.slice(0, 3);
+        const lastParagraphs = paragraphs.slice(-2);
+        
+        baseResult.content = {
+          summary: `PDF document with ${data.numpages} pages containing ${words.length} words across ${lines.length} lines.`,
+          first_paragraphs: firstParagraphs,
+          last_paragraphs: lastParagraphs,
+          key_statistics: {
+            pages: data.numpages,
+            words: words.length,
+            lines: lines.length,
+            paragraphs: paragraphs.length
+          }
+        };
+      } else if (options.conversionType === 'full_content') {
+        const paragraphs = data.text.split(/\n\s*\n/).filter(p => p.trim().length > 0);
+        const lines = data.text.split('\n');
+        
+        baseResult.content = {
+          full_text: data.text,
+          paragraphs: paragraphs,
+          lines: options.preserveFormatting ? lines : lines.map(line => line.trim()).filter(line => line.length > 0),
+          formatting: options.preserveFormatting ? "preserved" : "cleaned"
+        };
+      } else { // metadata_only
+        baseResult.content = {
+          structure: {
+            document_type: "PDF",
+            pages: data.numpages,
+            has_text: data.text.length > 0,
+            estimated_reading_time_minutes: Math.ceil(baseResult.metadata.word_count / 200)
+          }
+        };
+      }
+
+      return baseResult;
+    } catch (error) {
+      throw new Error(`Failed to parse PDF: ${error}`);
     }
-
-    return baseResult;
   }
 
   private async processDOCX(filePath: string, baseResult: ProcessedContent, options: ProcessingOptions): Promise<ProcessedContent> {
-    // Simulate DOCX processing
+    const buffer = await fs.readFile(filePath);
     const stats = await fs.stat(filePath);
     
-    baseResult.metadata = {
-      file_size: stats.size,
-      word_count: Math.floor(Math.random() * 5000) + 500,
-      created_date: stats.birthtime.toISOString().split('T')[0]
-    };
+    try {
+      // Extract both text and HTML for different formatting options
+      const textResult = await mammoth.extractRawText({ buffer });
+      const htmlResult = options.preserveFormatting ? await mammoth.convertToHtml({ buffer }) : null;
+      
+      const plainText = textResult.value;
+      const words = plainText.split(/\s+/).filter(word => word.length > 0);
+      const lines = plainText.split('\n').filter(line => line.trim().length > 0);
+      
+      // Extract metadata
+      baseResult.metadata = {
+        file_size: stats.size,
+        word_count: words.length,
+        character_count: plainText.length,
+        line_count: lines.length,
+        created_date: stats.birthtime.toISOString().split('T')[0],
+        has_formatting: options.preserveFormatting && htmlResult ? htmlResult.value.length > plainText.length : false
+      };
 
-    if (options.conversionType === 'summary') {
-      baseResult.content = {
-        summary: "Word document summary extracted with key information preserved.",
-        sections: [
-          { title: "Introduction", summary: "Document introduction" },
-          { title: "Main Content", summary: "Primary document content" }
-        ]
-      };
-    } else if (options.conversionType === 'full_content') {
-      baseResult.content = {
-        full_text: "Complete document text extraction would be here.",
-        paragraphs: [],
-        formatting: options.preserveFormatting ? "preserved" : "plain"
-      };
+      // Add conversion warnings/messages if any
+      if (textResult.messages && textResult.messages.length > 0) {
+        baseResult.metadata.conversion_messages = textResult.messages.map(msg => msg.message);
+      }
+
+      // Process content based on conversion type
+      if (options.conversionType === 'summary') {
+        // Split into paragraphs for better summary
+        const paragraphs = plainText.split(/\n\s*\n/).filter(p => p.trim().length > 0);
+        const firstParagraphs = paragraphs.slice(0, 3);
+        const lastParagraphs = paragraphs.slice(-2);
+        
+        // Try to identify potential sections (lines that might be headings)
+        const potentialHeadings = lines.filter(line => {
+          const trimmed = line.trim();
+          return trimmed.length < 100 && // Short lines
+                 trimmed.split(' ').length <= 8 && // Few words
+                 !trimmed.endsWith('.') && // Don't end with period
+                 trimmed.length > 3; // Not too short
+        });
+
+        baseResult.content = {
+          summary: `Word document with ${words.length} words across ${paragraphs.length} paragraphs.`,
+          first_paragraphs: firstParagraphs,
+          last_paragraphs: lastParagraphs,
+          potential_sections: potentialHeadings.slice(0, 10),
+          key_statistics: {
+            words: words.length,
+            paragraphs: paragraphs.length,
+            lines: lines.length,
+            estimated_pages: Math.ceil(words.length / 250)
+          }
+        };
+      } else if (options.conversionType === 'full_content') {
+        const paragraphs = plainText.split(/\n\s*\n/).filter(p => p.trim().length > 0);
+        
+        baseResult.content = {
+          full_text: plainText,
+          paragraphs: paragraphs,
+          lines: lines,
+          formatting: options.preserveFormatting ? "preserved" : "plain"
+        };
+
+        // Include HTML if formatting is preserved
+        if (options.preserveFormatting && htmlResult) {
+          baseResult.content.html_content = htmlResult.value;
+        }
+      } else { // metadata_only
+        baseResult.content = {
+          structure: {
+            document_type: "DOCX",
+            has_text: plainText.length > 0,
+            estimated_reading_time_minutes: Math.ceil(words.length / 200),
+            estimated_pages: Math.ceil(words.length / 250)
+          }
+        };
+      }
+
+      return baseResult;
+    } catch (error) {
+      throw new Error(`Failed to parse DOCX: ${error}`);
     }
-
-    return baseResult;
   }
 
   private async processText(filePath: string, baseResult: ProcessedContent, options: ProcessingOptions): Promise<ProcessedContent> {
