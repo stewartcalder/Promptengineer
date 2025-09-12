@@ -16,7 +16,7 @@ const upload = multer({
     fileSize: 10 * 1024 * 1024, // 10MB limit
   },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['.pdf', '.docx', '.txt', '.md', '.csv', '.json', '.xml'];
+    const allowedTypes = ['.pdf', '.docx', '.txt', '.md', '.csv', '.json', '.xml', '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'];
     const ext = path.extname(file.originalname).toLowerCase();
     
     if (allowedTypes.includes(ext)) {

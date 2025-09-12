@@ -48,6 +48,13 @@ export class FileProcessor {
           return await this.processJSON(filePath, baseResult, options);
         case 'xml':
           return await this.processXML(filePath, baseResult, options);
+        case 'jpg':
+        case 'jpeg':
+        case 'png':
+        case 'gif':
+        case 'bmp':
+        case 'webp':
+          return await this.processImage(filePath, baseResult, options);
         default:
           throw new Error(`Unsupported file type: ${fileType}`);
       }
@@ -350,6 +357,81 @@ export class FileProcessor {
     }
 
     return baseResult;
+  }
+
+  private async processImage(filePath: string, baseResult: ProcessedContent, options: ProcessingOptions): Promise<ProcessedContent> {
+    const buffer = await fs.readFile(filePath);
+    const stats = await fs.stat(filePath);
+    
+    try {
+      // Extract basic metadata
+      baseResult.metadata = {
+        file_size: stats.size,
+        created_date: stats.birthtime.toISOString().split('T')[0],
+        mime_type: this.getMimeType(baseResult.document_type),
+        format: baseResult.document_type.toUpperCase()
+      };
+
+      // Process content based on conversion type
+      if (options.conversionType === 'summary') {
+        baseResult.content = {
+          summary: `${baseResult.document_type.toUpperCase()} image file (${this.formatFileSize(stats.size)})`,
+          image_info: {
+            format: baseResult.document_type.toUpperCase(),
+            file_size: this.formatFileSize(stats.size),
+            estimated_type: "Image file - content cannot be extracted as text"
+          }
+        };
+      } else if (options.conversionType === 'full_content') {
+        baseResult.content = {
+          message: "Image files cannot be converted to text content",
+          image_info: {
+            format: baseResult.document_type.toUpperCase(),
+            file_size: this.formatFileSize(stats.size),
+            file_path: filePath,
+            mime_type: this.getMimeType(baseResult.document_type)
+          },
+          available_operations: [
+            "View image",
+            "Download original file",
+            "Get metadata information"
+          ]
+        };
+      } else { // metadata_only
+        baseResult.content = {
+          structure: {
+            document_type: "IMAGE",
+            format: baseResult.document_type.toUpperCase(),
+            is_binary: true,
+            processing_note: "Binary image file - no text content available"
+          }
+        };
+      }
+
+      return baseResult;
+    } catch (error) {
+      throw new Error(`Failed to process image: ${error}`);
+    }
+  }
+
+  private getMimeType(fileType: string): string {
+    const mimeTypes: Record<string, string> = {
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'gif': 'image/gif',
+      'bmp': 'image/bmp',
+      'webp': 'image/webp'
+    };
+    return mimeTypes[fileType.toLowerCase()] || 'image/unknown';
+  }
+
+  private formatFileSize(bytes: number): string {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }
 
   private inferDataTypes(rows: any[]): Record<string, string> {

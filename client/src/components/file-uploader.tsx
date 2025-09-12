@@ -68,7 +68,7 @@ export default function FileUploader({ onUploadComplete }: FileUploaderProps) {
     if (validFiles.length !== files.length) {
       toast({
         title: "Invalid file types",
-        description: "Some files were skipped. Only PDF, DOCX, TXT, MD, CSV, JSON, and XML files are supported.",
+        description: "Some files were skipped. Only PDF, DOCX, TXT, MD, CSV, JSON, XML, and image files (JPG, PNG, GIF, BMP, WebP) are supported.",
         variant: "destructive"
       });
     }
