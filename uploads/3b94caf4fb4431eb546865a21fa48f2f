@@ -1,0 +1,660 @@
+# Frontend Development Specification
+## Intelligent Document Management System
+
+### Project Overview
+Build a modern, responsive web frontend for the FastAPI-based document management system with three distinct interfaces:
+
+1. **Resource Manager** - File management across five purposes
+2. **Session Builder** - Cross-purpose file organization 
+3. **LLM Execution Hub** - Session-based prompt building and execution
+
+---
+
+## Technical Stack Requirements
+
+### Core Technologies
+- **Framework**: React 18+ with TypeScript
+- **Build Tool**: Vite for fast development and optimized builds
+- **Styling**: Tailwind CSS for utility-first responsive design
+- **State Management**: Zustand for lightweight, intuitive state handling
+- **HTTP Client**: Axios with interceptors for API communication
+- **Routing**: React Router v6 for single-page navigation
+- **UI Components**: Headless UI or Radix UI for accessible components
+- **File Upload**: React Dropzone for drag-and-drop file handling
+- **Data Tables**: TanStack Table v8 for advanced table features
+- **Notifications**: React Hot Toast for user feedback
+- **Icons**: Lucide React for consistent iconography
+
+### Development Setup
+```bash
+npm create vite@latest document-manager --template react-ts
+cd document-manager
+npm install axios @types/axios zustand react-router-dom
+npm install @tailwindcss/forms @headlessui/react lucide-react
+npm install react-dropzone @tanstack/react-table react-hot-toast
+npm run dev
+```
+
+---
+
+## Architecture & File Structure
+
+```
+src/
+├── components/           # Reusable UI components
+│   ├── ui/              # Base UI components (Button, Modal, etc.)
+│   ├── file/            # File-specific components
+│   ├── session/         # Session management components
+│   └── common/          # Shared components (Header, Sidebar)
+├── pages/               # Main interface pages
+│   ├── ResourceManager.tsx
+│   ├── SessionBuilder.tsx
+│   └── LLMExecution.tsx
+├── hooks/               # Custom React hooks
+│   ├── useFiles.ts
+│   ├── useSessions.ts
+│   └── useLLM.ts
+├── store/               # Zustand stores
+│   ├── fileStore.ts
+│   ├── sessionStore.ts
+│   └── llmStore.ts
+├── services/            # API service layer
+│   ├── api.ts           # Base API configuration
+│   ├── fileService.ts   # File management APIs
+│   ├── sessionService.ts # Session management APIs
+│   └── llmService.ts    # LLM execution APIs
+├── types/               # TypeScript type definitions
+│   ├── file.ts
+│   ├── session.ts
+│   └── api.ts
+├── utils/               # Utility functions
+│   ├── formatters.ts
+│   ├── validators.ts
+│   └── constants.ts
+└── App.tsx             # Main application component
+```
+
+---
+
+## Interface 1: Resource Manager
+
+### Core Features
+- **File Upload Hub**: Multi-format drag-and-drop with purpose selection
+- **Purpose-Based Organization**: Five distinct sections (extractee, extraction_rule, knowledgebase, tool, report_spec)
+- **Advanced File Table**: Sortable, filterable, searchable data grid
+- **File Operations**: Preview, download, delete, batch operations
+- **Real-time Statistics**: File counts, storage usage, recent activity
+
+### Component Structure
+```typescript
+// ResourceManager.tsx
+interface ResourceManagerProps {}
+
+const ResourceManager: React.FC = () => {
+  return (
+    <div className="grid grid-cols-12 gap-6 p-6">
+      <div className="col-span-3">
+        <PurposeFilters />
+        <FileStatistics />
+      </div>
+      <div className="col-span-9">
+        <FileUploadZone />
+        <FileDataTable />
+      </div>
+    </div>
+  )
+}
+```
+
+### Key Components
+
+#### FileUploadZone
+```typescript
+interface FileUploadZoneProps {
+  onFilesUploaded: (files: File[], purpose: FilePurpose) => void;
+}
+
+const FileUploadZone: React.FC<FileUploadZoneProps> = ({ onFilesUploaded }) => {
+  // Drag-and-drop interface with purpose selector
+  // Progress tracking for uploads
+  // File type validation and size limits
+  // Batch upload support
+}
+```
+
+#### FileDataTable
+```typescript
+interface FileDataTableProps {
+  files: FileRecord[];
+  selectedPurpose?: FilePurpose;
+}
+
+const FileDataTable: React.FC<FileDataTableProps> = ({ files, selectedPurpose }) => {
+  // TanStack Table with sorting, filtering, pagination
+  // Purpose-specific columns and actions
+  // Bulk selection and operations
+  // Preview modal integration
+}
+```
+
+#### PurposeFilters
+```typescript
+const PurposeFilters: React.FC = () => {
+  // Five purpose categories with file counts
+  // Active filter state management
+  // Search functionality per purpose
+}
+```
+
+### API Integration
+```typescript
+// fileService.ts
+export const fileService = {
+  uploadFile: (file: File, purpose: FilePurpose) => Promise<FileRecord>,
+  getFilesByPurpose: (purpose: FilePurpose) => Promise<FileRecord[]>,
+  deleteFiles: (fileIds: string[], purpose: FilePurpose) => Promise<void>,
+  getFileContent: (fileId: string, purpose: FilePurpose) => Promise<string>,
+  searchFiles: (query: string, purpose: FilePurpose) => Promise<FileRecord[]>,
+  getFileStats: () => Promise<FileStats>
+}
+```
+
+---
+
+## Interface 2: Session Builder
+
+### Core Features
+- **Session Management**: Create, edit, delete sessions with descriptions
+- **Cross-Purpose File Selection**: Add files from any purpose to sessions
+- **Visual Session Overview**: Files organized by purpose within sessions
+- **Drag-and-Drop Interface**: Intuitive file assignment to sessions
+- **Session Templates**: Pre-configured session types for common workflows
+
+### Component Structure
+```typescript
+// SessionBuilder.tsx
+const SessionBuilder: React.FC = () => {
+  return (
+    <div className="grid grid-cols-12 gap-6 p-6">
+      <div className="col-span-4">
+        <SessionList />
+        <SessionForm />
+      </div>
+      <div className="col-span-8">
+        <SessionWorkspace />
+      </div>
+    </div>
+  )
+}
+```
+
+### Key Components
+
+#### SessionList
+```typescript
+interface SessionListProps {
+  sessions: SessionRecord[];
+  selectedSession?: string;
+  onSelectSession: (sessionId: string) => void;
+}
+
+const SessionList: React.FC<SessionListProps> = ({ sessions, selectedSession, onSelectSession }) => {
+  // List of all sessions with metadata
+  // File count indicators per session
+  // Quick actions (edit, delete, duplicate)
+  // Search and filter sessions
+}
+```
+
+#### SessionWorkspace
+```typescript
+interface SessionWorkspaceProps {
+  session: SessionRecord;
+  onAddFiles: (files: FileRecord[], purpose: FilePurpose) => void;
+  onRemoveFile: (fileId: string, purpose: FilePurpose) => void;
+}
+
+const SessionWorkspace: React.FC<SessionWorkspaceProps> = ({ session, onAddFiles, onRemoveFile }) => {
+  // Five purpose sections with assigned files
+  // Drag-and-drop file assignment
+  // File browser modal for adding files
+  // Visual file organization with purpose grouping
+}
+```
+
+#### FileSelector
+```typescript
+interface FileSelectorProps {
+  purpose: FilePurpose;
+  selectedFiles: string[];
+  onFileSelect: (fileIds: string[]) => void;
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+const FileSelector: React.FC<FileSelectorProps> = ({ purpose, selectedFiles, onFileSelect, isOpen, onClose }) => {
+  // Modal with filterable file list for specific purpose
+  // Multi-select with checkboxes
+  // File preview capability
+  // Batch selection tools
+}
+```
+
+### API Integration
+```typescript
+// sessionService.ts
+export const sessionService = {
+  createSession: (sessionId: string, description: string) => Promise<SessionRecord>,
+  getSessions: () => Promise<SessionRecord[]>,
+  getSession: (sessionId: string) => Promise<SessionRecord>,
+  updateSession: (sessionId: string, description: string) => Promise<SessionRecord>,
+  deleteSession: (sessionId: string) => Promise<void>,
+  addFilesToSession: (sessionId: string, fileIds: string[], purpose: FilePurpose) => Promise<void>,
+  removeFileFromSession: (sessionId: string, fileId: string, purpose: FilePurpose) => Promise<void>,
+  buildPrompt: (sessionId: string) => Promise<string>
+}
+```
+
+---
+
+## Interface 3: LLM Execution Hub
+
+### Core Features
+- **Session Selection**: Choose session for LLM processing
+- **Prompt Preview**: View generated prompt from session files
+- **LLM Configuration**: Select provider, model, and parameters
+- **Execution Tracking**: Real-time progress with Server-Sent Events
+- **Results Display**: Formatted LLM responses with export options
+- **Execution History**: Previous runs with results caching
+
+### Component Structure
+```typescript
+// LLMExecution.tsx
+const LLMExecution: React.FC = () => {
+  return (
+    <div className="grid grid-cols-12 gap-6 p-6">
+      <div className="col-span-4">
+        <SessionSelector />
+        <LLMConfiguration />
+        <ExecutionHistory />
+      </div>
+      <div className="col-span-8">
+        <PromptPreview />
+        <ResultsDisplay />
+      </div>
+    </div>
+  )
+}
+```
+
+### Key Components
+
+#### SessionSelector
+```typescript
+interface SessionSelectorProps {
+  sessions: SessionRecord[];
+  selectedSession?: string;
+  onSelectSession: (sessionId: string) => void;
+}
+
+const SessionSelector: React.FC<SessionSelectorProps> = ({ sessions, selectedSession, onSelectSession }) => {
+  // Dropdown/list of available sessions
+  // Session details preview (file counts by purpose)
+  // Quick session stats and descriptions
+}
+```
+
+#### PromptPreview
+```typescript
+interface PromptPreviewProps {
+  sessionId?: string;
+  prompt?: string;
+  isGenerating: boolean;
+}
+
+const PromptPreview: React.FC<PromptPreviewProps> = ({ sessionId, prompt, isGenerating }) => {
+  // Read-only text area showing generated prompt
+  // Syntax highlighting for better readability
+  // Copy to clipboard functionality
+  // Prompt statistics (token count, file count)
+}
+```
+
+#### LLMConfiguration
+```typescript
+interface LLMConfigurationProps {
+  config: LLMConfig;
+  onConfigChange: (config: LLMConfig) => void;
+}
+
+const LLMConfiguration: React.FC<LLMConfigurationProps> = ({ config, onConfigChange }) => {
+  // Provider selection (OpenAI, Anthropic, Mock)
+  // Model selection based on provider
+  // Parameter controls (temperature, max_tokens)
+  // Custom instruction input field
+}
+```
+
+#### ResultsDisplay
+```typescript
+interface ResultsDisplayProps {
+  isExecuting: boolean;
+  results?: LLMResponse;
+  progress?: ExecutionProgress;
+}
+
+const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ isExecuting, results, progress }) => {
+  // Real-time progress bar with SSE updates
+  // Formatted results display with markdown support
+  // Export options (JSON, PDF, CSV)
+  // Error handling and retry functionality
+}
+```
+
+### API Integration
+```typescript
+// llmService.ts
+export const llmService = {
+  executeWithSession: (sessionId: string, instruction: string, config: LLMConfig) => Promise<LLMResponse>,
+  executeWithProgress: (sessionId: string, instruction: string, config: LLMConfig) => EventSource,
+  getExecutionHistory: () => Promise<ExecutionRecord[]>,
+  exportResults: (executionId: string, format: 'json' | 'pdf' | 'csv') => Promise<Blob>
+}
+```
+
+---
+
+## State Management
+
+### File Store
+```typescript
+// fileStore.ts
+interface FileState {
+  files: Record<FilePurpose, FileRecord[]>;
+  stats: FileStats | null;
+  loading: boolean;
+  error: string | null;
+  
+  // Actions
+  uploadFile: (file: File, purpose: FilePurpose) => Promise<void>;
+  loadFiles: (purpose?: FilePurpose) => Promise<void>;
+  deleteFiles: (fileIds: string[], purpose: FilePurpose) => Promise<void>;
+  searchFiles: (query: string, purpose: FilePurpose) => Promise<void>;
+  loadStats: () => Promise<void>;
+}
+```
+
+### Session Store
+```typescript
+// sessionStore.ts
+interface SessionState {
+  sessions: SessionRecord[];
+  currentSession: SessionRecord | null;
+  loading: boolean;
+  error: string | null;
+  
+  // Actions
+  loadSessions: () => Promise<void>;
+  createSession: (sessionId: string, description: string) => Promise<void>;
+  selectSession: (sessionId: string) => Promise<void>;
+  updateSession: (sessionId: string, description: string) => Promise<void>;
+  deleteSession: (sessionId: string) => Promise<void>;
+  addFilesToSession: (sessionId: string, fileIds: string[], purpose: FilePurpose) => Promise<void>;
+  removeFileFromSession: (sessionId: string, fileId: string, purpose: FilePurpose) => Promise<void>;
+}
+```
+
+### LLM Store
+```typescript
+// llmStore.ts
+interface LLMState {
+  config: LLMConfig;
+  currentPrompt: string | null;
+  results: LLMResponse | null;
+  isExecuting: boolean;
+  progress: ExecutionProgress | null;
+  history: ExecutionRecord[];
+  error: string | null;
+  
+  // Actions
+  setConfig: (config: LLMConfig) => void;
+  generatePrompt: (sessionId: string) => Promise<void>;
+  executeWithSession: (sessionId: string, instruction: string) => Promise<void>;
+  executeWithProgress: (sessionId: string, instruction: string) => EventSource;
+  loadHistory: () => Promise<void>;
+  exportResults: (executionId: string, format: string) => Promise<void>;
+}
+```
+
+---
+
+## Type Definitions
+
+### Core Types
+```typescript
+// types/file.ts
+export type FilePurpose = 'extractee' | 'extraction_rule' | 'knowledgebase' | 'tool' | 'report_spec';
+
+export interface FileRecord {
+  id: number;
+  file_id: string;
+  filename: string;
+  file_type: string;
+  file_size: number;
+  purpose: FilePurpose;
+  upload_date: string;
+  processed_text: string;
+  original_content?: string;
+}
+
+export interface FileStats {
+  total_files: number;
+  files_by_purpose: Record<FilePurpose, number>;
+  total_size: number;
+  recent_uploads: number;
+}
+
+// types/session.ts
+export interface SessionRecord {
+  id: number;
+  session_id: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+  files: Record<FilePurpose, FileRecord[]>;
+  file_count: number;
+}
+
+export interface SessionFileMapping {
+  session_id: string;
+  file_id: string;
+  purpose: FilePurpose;
+  added_at: string;
+}
+
+// types/llm.ts
+export interface LLMConfig {
+  provider: 'openai' | 'anthropic' | 'mock';
+  model: string;
+  temperature: number;
+  max_tokens: number;
+}
+
+export interface LLMResponse {
+  response: string;
+  execution_time: number;
+  token_usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+  provider: string;
+  model: string;
+}
+
+export interface ExecutionProgress {
+  stage: string;
+  progress: number;
+  message: string;
+  timestamp: string;
+}
+
+export interface ExecutionRecord {
+  id: string;
+  session_id: string;
+  instruction: string;
+  config: LLMConfig;
+  results: LLMResponse;
+  created_at: string;
+}
+```
+
+---
+
+## User Experience Guidelines
+
+### Design Principles
+1. **Purpose-Driven Navigation**: Clear visual separation between the five file purposes
+2. **Progressive Disclosure**: Show relevant information based on context and user actions
+3. **Drag-and-Drop Interactions**: Intuitive file management across all interfaces
+4. **Real-time Feedback**: Immediate visual feedback for all user actions
+5. **Responsive Design**: Fully functional across desktop, tablet, and mobile devices
+
+### Visual Design
+- **Color Coding**: Each file purpose has a distinct color theme
+- **Typography**: Clear hierarchy with consistent font weights and sizes
+- **Spacing**: Generous whitespace for improved readability
+- **Loading States**: Skeleton screens and progress indicators
+- **Error Handling**: Clear error messages with actionable solutions
+
+### Accessibility
+- **ARIA Labels**: Comprehensive screen reader support
+- **Keyboard Navigation**: Full keyboard accessibility
+- **Color Contrast**: WCAG 2.1 AA compliance
+- **Focus Management**: Clear focus indicators
+- **Alternative Text**: Descriptive alt text for all images
+
+---
+
+## Development Workflow
+
+### Phase 1: Foundation (Week 1)
+1. Set up React + TypeScript + Vite project
+2. Configure Tailwind CSS and base UI components
+3. Implement routing and navigation structure
+4. Create API service layer and type definitions
+5. Set up Zustand stores for state management
+
+### Phase 2: Resource Manager (Week 2)
+1. Build file upload functionality with drag-and-drop
+2. Implement file data table with sorting and filtering
+3. Add purpose-based organization and statistics
+4. Create file preview and management features
+5. Add batch operations and search functionality
+
+### Phase 3: Session Builder (Week 3)
+1. Implement session CRUD operations
+2. Build cross-purpose file selection interface
+3. Create drag-and-drop session workspace
+4. Add session templates and management tools
+5. Implement session file organization features
+
+### Phase 4: LLM Execution Hub (Week 4)
+1. Build session selection and prompt generation
+2. Implement LLM configuration interface
+3. Add real-time execution with SSE progress tracking
+4. Create results display with export functionality
+5. Build execution history and caching
+
+### Phase 5: Integration & Polish (Week 5)
+1. Integrate all three interfaces seamlessly
+2. Add comprehensive error handling
+3. Implement responsive design optimizations
+4. Add accessibility features and testing
+5. Performance optimization and final testing
+
+---
+
+## Testing Strategy
+
+### Unit Testing
+- **Components**: React Testing Library for component behavior
+- **Hooks**: Custom hook testing with React Hooks Testing Library
+- **Services**: Mock API responses for service layer testing
+- **Utils**: Pure function testing for utilities
+
+### Integration Testing
+- **API Integration**: Test all API endpoints with mock server
+- **User Workflows**: End-to-end testing of complete user journeys
+- **Cross-Interface**: Test data flow between all three interfaces
+
+### Performance Testing
+- **Bundle Size**: Analyze and optimize JavaScript bundle
+- **Loading Times**: Monitor API response times and loading states
+- **Memory Usage**: Profile React component re-renders and memory leaks
+
+---
+
+## Deployment Configuration
+
+### Environment Variables
+```bash
+VITE_API_BASE_URL=http://localhost:5000
+VITE_APP_TITLE=Intelligent Document Manager
+VITE_MAX_FILE_SIZE=20971520  # 20MB in bytes
+VITE_SUPPORTED_FILE_TYPES=pdf,docx,xlsx,csv,txt
+```
+
+### Build Configuration
+```typescript
+// vite.config.ts
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 3000,
+    proxy: {
+      '/api': 'http://localhost:5000'
+    }
+  },
+  build: {
+    outDir: 'dist',
+    sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          api: ['axios', 'zustand'],
+          ui: ['@headlessui/react', 'lucide-react']
+        }
+      }
+    }
+  }
+})
+```
+
+---
+
+## Success Metrics
+
+### Functionality
+- ✅ All 23+ API endpoints successfully integrated
+- ✅ Complete file upload and management workflow
+- ✅ Session creation and file organization
+- ✅ LLM prompt building and execution
+- ✅ Real-time progress tracking with SSE
+
+### Performance
+- ✅ Page load time under 2 seconds
+- ✅ File upload progress feedback
+- ✅ Smooth drag-and-drop interactions
+- ✅ Responsive design across all devices
+
+### User Experience
+- ✅ Intuitive navigation between interfaces
+- ✅ Clear visual feedback for all actions
+- ✅ Accessible to users with disabilities
+- ✅ Error handling with actionable messages
+
+---
+
+This specification provides a comprehensive blueprint for building a professional, feature-rich frontend that leverages the full power of your FastAPI backend system. The three-interface design ensures users can efficiently manage files, organize sessions, and execute LLM workflows with confidence and ease.
