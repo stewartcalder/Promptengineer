@@ -1,8 +1,11 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { createReadStream } from 'fs';
+import { createRequire } from 'module';
 import csv from 'csv-parser';
 import mammoth from 'mammoth';
+
+const require = createRequire(import.meta.url);
 
 // Type definitions for different file processors
 export interface ProcessingOptions {
@@ -68,8 +71,8 @@ export class FileProcessor {
     const stats = await fs.stat(filePath);
     
     try {
-      // Dynamically import pdf-parse to avoid initialization issues
-      const { default: pdfParse } = await import('pdf-parse');
+      // Use require with createRequire to avoid debug mode trigger
+      const pdfParse = require('pdf-parse');
       const data = await pdfParse(buffer);
       
       // Extract metadata
